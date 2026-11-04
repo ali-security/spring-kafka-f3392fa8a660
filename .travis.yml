@@ -1,7 +1,12 @@
 dist: trusty
 language: java
-jdk: oraclejdk8
 install: true
+before_install:
+  - curl -fsSL -o /tmp/temurin8.tar.gz "https://api.adoptium.net/v3/binary/latest/8/ga/linux/x64/jdk/hotspot/normal/eclipse"
+  - mkdir -p /tmp/temurin8 && tar -xzf /tmp/temurin8.tar.gz -C /tmp/temurin8 --strip-components=1
+  - export JAVA_HOME=/tmp/temurin8
+  - export PATH="$JAVA_HOME/bin:$PATH"
+  - java -version
 before_cache:
   - rm -f $HOME/.gradle/caches/modules-2/modules-2.lock
 cache:
@@ -11,4 +16,7 @@ cache:
 env:
     - GRADLE_ENTERPRISE_URL=https://ge.spring.io/
 script:
-  - ./gradlew check --no-daemon
+  - ./gradlew check --no-daemon --console=plain -I gradle/seal-test-summary.gradle
+after_script:
+  - echo "Tests disabled upstream (@Disabled with reason):" && grep -rn -A1 "@Disabled" --include=*.java spring-kafka/src/test spring-kafka-test/src/test
+  - sh .travis/wait-for-log.sh gradle

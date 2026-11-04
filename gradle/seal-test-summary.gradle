@@ -1,0 +1,28 @@
+// Seal build helper (init script, passed with -I): print per-class and per-project
+// test result lines plus a final summary, so the CI log states how many tests ran,
+// passed, failed and were skipped. build.gradle captures test stdout at INFO level,
+// so everything here goes through logger.lifecycle rather than println.
+allprojects {
+	tasks.withType(Test) { Test t ->
+		t.afterTest { desc, result ->
+			if (result.resultType == TestResult.ResultType.SKIPPED) {
+				t.logger.lifecycle("SEAL SKIPPED: ${desc.className} > ${desc.name}")
+			}
+			else if (result.resultType == TestResult.ResultType.FAILURE) {
+				t.logger.lifecycle("SEAL FAILED: ${desc.className} > ${desc.name}")
+			}
+		}
+		t.afterSuite { desc, result ->
+			if (desc.className != null && desc.name == desc.className) {
+				t.logger.lifecycle("SEAL CLASS ${desc.className}: ${result.resultType} " +
+						"(tests=${result.testCount}, passed=${result.successfulTestCount}, " +
+						"failed=${result.failedTestCount}, skipped=${result.skippedTestCount})")
+			}
+			if (desc.parent == null) {
+				t.logger.lifecycle("SEAL TEST SUMMARY ${t.project.path}: ${result.resultType} " +
+						"tests=${result.testCount} passed=${result.successfulTestCount} " +
+						"failed=${result.failedTestCount} skipped=${result.skippedTestCount}")
+			}
+		}
+	}
+}
