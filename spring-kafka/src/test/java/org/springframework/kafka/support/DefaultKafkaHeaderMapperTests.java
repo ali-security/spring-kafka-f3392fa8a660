@@ -303,6 +303,67 @@ public class DefaultKafkaHeaderMapperTests {
 		assertThat(headers.get("unit")).isEqualTo(TimeUnit.SECONDS);
 	}
 
+	@Test
+	void networkSideEffectTypesAreNeverTrusted() {
+		for (String type : Arrays.asList("java.net.InetAddress", "java.net.Inet4Address", "java.net.Inet6Address",
+				"java.net.InetSocketAddress")) {
+			DefaultKafkaHeaderMapper mapper = new DefaultKafkaHeaderMapper();
+			Map<String, Object> headers = new HashMap<>();
+			mapper.toHeaders(inboundHeaders(type), headers);
+			assertThat(headers.get("host")).isInstanceOf(NonTrustedHeaderType.class);
+			assertThat(((NonTrustedHeaderType) headers.get("host")).getUntrustedType()).isEqualTo(type);
+		}
+	}
+
+	@Test
+	void networkSideEffectTypesNotTrustedEvenWithWildcard() {
+		DefaultKafkaHeaderMapper mapper = new DefaultKafkaHeaderMapper();
+		mapper.addTrustedPackages("*");
+		Map<String, Object> headers = new HashMap<>();
+		mapper.toHeaders(inboundHeaders("java.net.InetAddress"), headers);
+		assertThat(headers.get("host")).isInstanceOf(NonTrustedHeaderType.class);
+	}
+
+	@Test
+	void networkSideEffectArrayTypesAreNeverTrusted() {
+		for (String type : Arrays.asList("[Ljava.net.InetAddress;", "[Ljava.net.Inet4Address;",
+				"[Ljava.net.Inet6Address;", "[Ljava.net.InetSocketAddress;", "[[Ljava.net.InetAddress;",
+				"[[Ljava.net.Inet4Address;", "[[[Ljava.net.InetAddress;")) {
+			DefaultKafkaHeaderMapper mapper = new DefaultKafkaHeaderMapper();
+			mapper.addTrustedPackages("*");
+			RecordHeaders recordHeaders = new RecordHeaders();
+			recordHeaders.add(new RecordHeader(DefaultKafkaHeaderMapper.JSON_TYPES,
+					("{\"host\":\"" + type + "\"}").getBytes(StandardCharsets.UTF_8)));
+			recordHeaders.add(new RecordHeader("host", "[\"spring.kafka.invalid\"]".getBytes(StandardCharsets.UTF_8)));
+			Map<String, Object> headers = new HashMap<>();
+			mapper.toHeaders(recordHeaders, headers);
+			assertThat(headers.get("host")).isInstanceOf(NonTrustedHeaderType.class);
+		}
+	}
+
+	@Test
+	void realInetAddressArrayTypeIsNeverTrusted() {
+		DefaultKafkaHeaderMapper mapper = new DefaultKafkaHeaderMapper();
+		String type = java.net.InetAddress[].class.getName();
+		assertThat(type).isEqualTo("[Ljava.net.InetAddress;");
+		RecordHeaders recordHeaders = new RecordHeaders();
+		recordHeaders.add(new RecordHeader(DefaultKafkaHeaderMapper.JSON_TYPES,
+				("{\"host\":\"" + type + "\"}").getBytes(StandardCharsets.UTF_8)));
+		recordHeaders.add(new RecordHeader("host", "[\"spring.kafka.invalid\"]".getBytes(StandardCharsets.UTF_8)));
+		Map<String, Object> headers = new HashMap<>();
+		mapper.toHeaders(recordHeaders, headers);
+		assertThat(headers.get("host")).isInstanceOf(NonTrustedHeaderType.class);
+		assertThat(((NonTrustedHeaderType) headers.get("host")).getUntrustedType()).isEqualTo(type);
+	}
+
+	private static RecordHeaders inboundHeaders(String type) {
+		RecordHeaders recordHeaders = new RecordHeaders();
+		recordHeaders.add(new RecordHeader(DefaultKafkaHeaderMapper.JSON_TYPES,
+				("{\"host\":\"" + type + "\"}").getBytes(StandardCharsets.UTF_8)));
+		recordHeaders.add(new RecordHeader("host", "\"spring.kafka.invalid\"".getBytes(StandardCharsets.UTF_8)));
+		return recordHeaders;
+	}
+
 	public static final class Foo {
 
 		private String bar = "bar";
