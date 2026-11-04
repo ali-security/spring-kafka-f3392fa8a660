@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeader;
@@ -245,6 +246,61 @@ public class DefaultKafkaHeaderMapperTests {
 				entry("thisOnesAString", "foo".getBytes()),
 				entry("thisOnesBytes", "bar".getBytes()),
 				entry("alwaysRaw", "baz".getBytes()));
+	}
+
+	@Test
+	void inboundTypeInSubpackageOfTrustedPackageIsNotDeserialized() {
+		DefaultKafkaHeaderMapper mapper = new DefaultKafkaHeaderMapper();
+		RecordHeaders recordHeaders = new RecordHeaders();
+		recordHeaders.add(new RecordHeader("unit", "\"SECONDS\"".getBytes(StandardCharsets.UTF_8)));
+		recordHeaders.add(new RecordHeader(DefaultKafkaHeaderMapper.JSON_TYPES,
+				"{\"unit\":\"java.util.concurrent.TimeUnit\"}".getBytes(StandardCharsets.UTF_8)));
+		Map<String, Object> headers = new HashMap<>();
+		mapper.toHeaders(recordHeaders, headers);
+		assertThat(headers.get("unit")).isInstanceOf(NonTrustedHeaderType.class);
+		assertThat(((NonTrustedHeaderType) headers.get("unit")).getUntrustedType())
+				.isEqualTo("java.util.concurrent.TimeUnit");
+
+		mapper.addTrustedPackages("java.util.concurrent");
+		headers = new HashMap<>();
+		mapper.toHeaders(recordHeaders, headers);
+		assertThat(headers.get("unit")).isEqualTo(TimeUnit.SECONDS);
+	}
+
+	@Test
+	void inboundTypeInSubpackageOfUserTrustedPackageIsNotDeserialized() {
+		DefaultKafkaHeaderMapper mapper = new DefaultKafkaHeaderMapper();
+		mapper.addTrustedPackages("org.springframework.kafka");
+		RecordHeaders recordHeaders = new RecordHeaders();
+		mapper.fromHeaders(new MessageHeaders(Collections.singletonMap("fix", new Foo())), recordHeaders);
+		Map<String, Object> headers = new HashMap<>();
+		mapper.toHeaders(recordHeaders, headers);
+		assertThat(headers.get("fix")).isInstanceOf(NonTrustedHeaderType.class);
+		assertThat(((NonTrustedHeaderType) headers.get("fix")).getUntrustedType()).isEqualTo(Foo.class.getName());
+
+		mapper.addTrustedPackages(getClass().getPackage().getName());
+		headers = new HashMap<>();
+		mapper.toHeaders(recordHeaders, headers);
+		assertThat(headers.get("fix")).isEqualTo(new Foo());
+	}
+
+	@Test
+	void propagatedNonTrustedTypeInSubpackageOfTrustedPackageIsNotDeserialized() {
+		DefaultKafkaHeaderMapper mapper = new DefaultKafkaHeaderMapper();
+		NonTrustedHeaderType upstream = new NonTrustedHeaderType("\"SECONDS\"".getBytes(StandardCharsets.UTF_8),
+				"java.util.concurrent.TimeUnit");
+		RecordHeaders recordHeaders = new RecordHeaders();
+		mapper.fromHeaders(new MessageHeaders(Collections.singletonMap("unit", upstream)), recordHeaders);
+		Map<String, Object> headers = new HashMap<>();
+		mapper.toHeaders(recordHeaders, headers);
+		assertThat(headers.get("unit")).isInstanceOf(NonTrustedHeaderType.class);
+		assertThat(((NonTrustedHeaderType) headers.get("unit")).getUntrustedType())
+				.isEqualTo("java.util.concurrent.TimeUnit");
+
+		mapper.addTrustedPackages("java.util.concurrent");
+		headers = new HashMap<>();
+		mapper.toHeaders(recordHeaders, headers);
+		assertThat(headers.get("unit")).isEqualTo(TimeUnit.SECONDS);
 	}
 
 	public static final class Foo {

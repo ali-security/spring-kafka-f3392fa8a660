@@ -198,7 +198,11 @@ public class DefaultKafkaHeaderMapper extends AbstractKafkaHeaderMapper {
 
 	/**
 	 * Add packages to the trusted packages list (default {@code java.util, java.lang}) used
-	 * when constructing objects from JSON.
+	 * when constructing objects from JSON. Trust is by
+	 * exact package match; a class is trusted only if
+	 * its declaring package appears in this list.
+	 * Subpackages are not trusted transitively, but add
+	 * them explicitly if needed.
 	 * If any of the supplied packages is {@code "*"}, all packages are trusted.
 	 * If a class for a non-trusted package is encountered, the header is returned to the
 	 * application with value of type {@link NonTrustedHeaderType}.
@@ -369,7 +373,7 @@ public class DefaultKafkaHeaderMapper extends AbstractKafkaHeaderMapper {
 			}
 			String packageName = requestedType.substring(0, lastDot);
 			for (String trustedPackage : this.trustedPackages) {
-				if (packageName.equals(trustedPackage) || packageName.startsWith(trustedPackage + ".")) {
+				if (packageName.equals(trustedPackage)) {
 					return true;
 				}
 			}
